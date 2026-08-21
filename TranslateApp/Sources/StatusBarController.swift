@@ -1,0 +1,48 @@
+import AppKit
+
+@MainActor
+final class StatusBarController: NSObject {
+    private let statusItem: NSStatusItem
+    private let menu = NSMenu()
+    private let pauseItem = NSMenuItem()
+    private var isPaused = false
+
+    override init() {
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        super.init()
+
+        statusItem.button?.image = NSImage(
+            systemSymbolName: "character.bubble",
+            accessibilityDescription: "Translate App"
+        )
+        statusItem.button?.toolTip = "Translate App"
+
+        pauseItem.title = "Pause Translation"
+        pauseItem.target = self
+        pauseItem.action = #selector(togglePaused)
+        menu.addItem(pauseItem)
+        menu.addItem(.separator())
+
+        let quitItem = NSMenuItem(
+            title: "Quit Translate App",
+            action: #selector(quit),
+            keyEquivalent: "q"
+        )
+        quitItem.target = self
+        menu.addItem(quitItem)
+        statusItem.menu = menu
+    }
+
+    @objc private func togglePaused() {
+        isPaused.toggle()
+        pauseItem.title = isPaused ? "Resume Translation" : "Pause Translation"
+        statusItem.button?.image = NSImage(
+            systemSymbolName: isPaused ? "character.bubble.fill" : "character.bubble",
+            accessibilityDescription: isPaused ? "Translation paused" : "Translate App"
+        )
+    }
+
+    @objc private func quit() {
+        NSApplication.shared.terminate(nil)
+    }
+}
