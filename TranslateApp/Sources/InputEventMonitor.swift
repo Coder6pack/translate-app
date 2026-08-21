@@ -14,13 +14,19 @@ final class InputEventMonitor {
     typealias Handler = @MainActor (MouseGesture) -> Void
 
     private let handler: Handler
+    private let secondClickHandler: @MainActor () -> Void
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
     private var callbackContext: UnsafeMutableRawPointer?
     private var mouseDownLocation: CGPoint?
+    private var deliveryGeneration: UInt64 = 0
 
-    init(handler: @escaping Handler) {
+    init(
+        handler: @escaping Handler,
+        onSecondClick: @escaping @MainActor () -> Void
+    ) {
         self.handler = handler
+        secondClickHandler = onSecondClick
     }
 
     var isRunning: Bool {
@@ -70,6 +76,7 @@ final class InputEventMonitor {
         runLoopSource = nil
         eventTap = nil
         mouseDownLocation = nil
+        deliveryGeneration &+= 1
         if let callbackContext {
             Unmanaged<CallbackContext>.fromOpaque(callbackContext).release()
             self.callbackContext = nil
@@ -94,7 +101,11 @@ final class InputEventMonitor {
         guard let type = CGEventType(rawValue: typeValue) else { return }
         switch type {
         case .leftMouseDown:
+            deliveryGeneration &+= 1
             mouseDownLocation = location
+            if clickCount >= 2 {
+                secondClickHandler()
+            }
 
         case .leftMouseUp:
             let startLocation = mouseDownLocation ?? location
@@ -110,8 +121,10 @@ final class InputEventMonitor {
                 kind = .singleClick
             }
             let gesture = MouseGesture(kind: kind, startLocation: startLocation, location: location)
-            Task { @MainActor [handler] in
+            let generation = deliveryGeneration
+            Task { @MainActor [weak self, handler] in
                 await Task.yield()
+                guard self?.deliveryGeneration == generation else { return }
                 handler(gesture)
             }
 

@@ -14,6 +14,9 @@ final class TranslationPanelController: NSObject {
     private let messageLabel = NSTextField(wrappingLabelWithString: "")
     private let copyButton = NSButton(title: "Copy", target: nil, action: nil)
     private var translatedText: String?
+    private var localEscapeMonitor: Any?
+    private var globalEscapeMonitor: Any?
+    var onDismiss: (@MainActor () -> Void)?
 
     override init() {
         panel = NSPanel(
@@ -51,6 +54,7 @@ final class TranslationPanelController: NSObject {
 
     func hide() {
         panel.orderOut(nil)
+        removeEscapeMonitors()
     }
 
     private func makeContentView() -> NSView {
@@ -128,6 +132,7 @@ final class TranslationPanelController: NSObject {
         panel.setContentSize(NSSize(width: 360, height: 148))
         panel.setFrameOrigin(panelOrigin(near: capture))
         panel.orderFrontRegardless()
+        installEscapeMonitorsIfNeeded()
     }
 
     private func panelOrigin(near capture: TextCapture) -> NSPoint {
@@ -146,8 +151,26 @@ final class TranslationPanelController: NSObject {
     }
 
     private func appKitPoint(from point: CGPoint) -> NSPoint {
-        let desktopTop = NSScreen.screens.map(\.frame.maxY).max() ?? 0
-        return NSPoint(x: point.x, y: desktopTop - point.y)
+        for screen in NSScreen.screens {
+            guard let screenNumber = screen.deviceDescription[
+                NSDeviceDescriptionKey("NSScreenNumber")
+            ] as? NSNumber else {
+                continue
+            }
+            let displayBounds = CGDisplayBounds(CGDirectDisplayID(screenNumber.uint32Value))
+            guard displayBounds.contains(point) else { continue }
+
+            return NSPoint(
+                x: screen.frame.minX + point.x - displayBounds.minX,
+                y: screen.frame.maxY - (point.y - displayBounds.minY)
+            )
+        }
+
+        let primaryDisplayBounds = CGDisplayBounds(CGMainDisplayID())
+        return NSPoint(
+            x: point.x - primaryDisplayBounds.minX,
+            y: primaryDisplayBounds.maxY - point.y
+        )
     }
 
     @objc private func copyTranslation() {
@@ -156,5 +179,38 @@ final class TranslationPanelController: NSObject {
         pasteboard.clearContents()
         pasteboard.setString(translatedText, forType: .string)
         copyButton.title = "Copied"
+    }
+
+    private func installEscapeMonitorsIfNeeded() {
+        guard localEscapeMonitor == nil, globalEscapeMonitor == nil else { return }
+
+        localEscapeMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard event.keyCode == 53 else { return event }
+            self?.requestDismissal()
+            return nil
+        }
+        globalEscapeMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard event.keyCode == 53 else { return }
+            self?.requestDismissal()
+        }
+    }
+
+    private func removeEscapeMonitors() {
+        if let localEscapeMonitor {
+            NSEvent.removeMonitor(localEscapeMonitor)
+            self.localEscapeMonitor = nil
+        }
+        if let globalEscapeMonitor {
+            NSEvent.removeMonitor(globalEscapeMonitor)
+            self.globalEscapeMonitor = nil
+        }
+    }
+
+    private func requestDismissal() {
+        if let onDismiss {
+            onDismiss()
+        } else {
+            hide()
+        }
     }
 }

@@ -39,6 +39,7 @@ final class SettingsStore {
     var isSelectionEnabled: Bool {
         get { defaults.bool(forKey: Key.selectionEnabled) }
         set {
+            guard newValue != isSelectionEnabled else { return }
             defaults.set(newValue, forKey: Key.selectionEnabled)
             onTranslationSettingsChanged?()
         }
@@ -47,6 +48,7 @@ final class SettingsStore {
     var isDoubleClickEnabled: Bool {
         get { defaults.bool(forKey: Key.doubleClickEnabled) }
         set {
+            guard newValue != isDoubleClickEnabled else { return }
             defaults.set(newValue, forKey: Key.doubleClickEnabled)
             onTranslationSettingsChanged?()
         }
@@ -55,6 +57,7 @@ final class SettingsStore {
     var isSingleClickEnabled: Bool {
         get { defaults.bool(forKey: Key.singleClickEnabled) }
         set {
+            guard newValue != isSingleClickEnabled else { return }
             defaults.set(newValue, forKey: Key.singleClickEnabled)
             onTranslationSettingsChanged?()
         }
@@ -63,6 +66,7 @@ final class SettingsStore {
     var isOCREnabled: Bool {
         get { defaults.bool(forKey: Key.ocrEnabled) }
         set {
+            guard newValue != isOCREnabled else { return }
             defaults.set(newValue, forKey: Key.ocrEnabled)
             onTranslationSettingsChanged?()
         }
@@ -75,6 +79,10 @@ final class SettingsStore {
 
     var isLaunchAtLoginEnabled: Bool {
         SMAppService.mainApp.status == .enabled
+    }
+
+    var hasEnabledCaptureTrigger: Bool {
+        isSelectionEnabled || isDoubleClickEnabled || isSingleClickEnabled
     }
 
     func setTargetLanguage(_ language: String) throws {
@@ -120,6 +128,25 @@ final class SettingsStore {
         case .singleClick:
             isSingleClickEnabled
         }
+    }
+
+    func setCapturePreferences(
+        selectionEnabled: Bool,
+        doubleClickEnabled: Bool,
+        singleClickEnabled: Bool,
+        ocrEnabled: Bool
+    ) {
+        let changed = selectionEnabled != isSelectionEnabled
+            || doubleClickEnabled != isDoubleClickEnabled
+            || singleClickEnabled != isSingleClickEnabled
+            || ocrEnabled != isOCREnabled
+        guard changed else { return }
+
+        defaults.set(selectionEnabled, forKey: Key.selectionEnabled)
+        defaults.set(doubleClickEnabled, forKey: Key.doubleClickEnabled)
+        defaults.set(singleClickEnabled, forKey: Key.singleClickEnabled)
+        defaults.set(ocrEnabled, forKey: Key.ocrEnabled)
+        onTranslationSettingsChanged?()
     }
 }
 

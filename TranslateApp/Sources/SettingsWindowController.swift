@@ -40,6 +40,13 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         }
         window = nil
     }
+
+    func refreshPermissionStatusIfVisible() {
+        guard let contentViewController = window?.contentViewController as? SettingsContentViewController else {
+            return
+        }
+        contentViewController.refreshPermissionStatus()
+    }
 }
 
 @MainActor
@@ -167,16 +174,23 @@ private final class SettingsContentViewController: NSViewController {
     }
 
     @objc private func saveCapturePreferences() {
-        settingsStore.isSelectionEnabled = selectionCheckbox.state == .on
-        settingsStore.isDoubleClickEnabled = doubleClickCheckbox.state == .on
-        settingsStore.isSingleClickEnabled = singleClickCheckbox.state == .on
+        let selectionEnabled = selectionCheckbox.state == .on
+        let doubleClickEnabled = doubleClickCheckbox.state == .on
+        let singleClickEnabled = singleClickCheckbox.state == .on
+        let ocrEnabled: Bool
         if ocrCheckbox.state == .on {
             let granted = PermissionManager.hasScreenRecordingAccess(prompt: true)
-            settingsStore.isOCREnabled = granted
+            ocrEnabled = granted
             ocrCheckbox.state = granted ? .on : .off
         } else {
-            settingsStore.isOCREnabled = false
+            ocrEnabled = false
         }
+        settingsStore.setCapturePreferences(
+            selectionEnabled: selectionEnabled,
+            doubleClickEnabled: doubleClickEnabled,
+            singleClickEnabled: singleClickEnabled,
+            ocrEnabled: ocrEnabled
+        )
         refreshPermissionStatus()
     }
 
@@ -251,7 +265,7 @@ private final class SettingsContentViewController: NSViewController {
         PermissionManager.openSystemSettings(.screenRecording)
     }
 
-    private func refreshPermissionStatus() {
+    func refreshPermissionStatus() {
         let accessibility = PermissionManager.hasAccessibilityAccess(prompt: false)
             ? "Accessibility ✓" : "Accessibility required"
         let input = PermissionManager.hasInputMonitoringAccess(prompt: false)

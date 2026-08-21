@@ -22,6 +22,8 @@ final class TranslationCoordinator {
     private var activeRequest: ActiveRequest?
     private var captureTask: Task<Void, Never>?
     private var translationTask: Task<Void, Never>?
+    private var cacheClearTask: Task<Void, Never>?
+    private var captureGeneration: UInt64 = 0
 
     init(
         textReader: AccessibilityTextReader = AccessibilityTextReader(),
@@ -43,29 +45,33 @@ final class TranslationCoordinator {
         self.ocrTextReader = ocrTextReader
         self.captureDelay = captureDelay
         self.debounceDuration = debounceDuration
+        panelController.onDismiss = { [weak self] in
+            self?.cancel()
+        }
     }
 
     func handle(_ gesture: MouseGesture) {
+        supersedeCurrentWork(hidePanel: true)
         guard settingsStore.isEnabled(for: gesture.kind) else { return }
-        captureTask?.cancel()
-        cancelCurrentRequest(hidePanel: true)
 
+        let generation = captureGeneration
         captureTask = Task { @MainActor [weak self, captureDelay] in
             do {
                 try await Task.sleep(for: captureDelay)
             } catch {
                 return
             }
-            guard let self, !Task.isCancelled else { return }
-            captureTask = nil
+            guard let self, isCurrentCapture(generation) else { return }
             var capture = await textReader.capture(for: gesture)
+            guard isCurrentCapture(generation) else { return }
             if capture == nil,
                gesture.kind == .singleClick,
                settingsStore.isOCREnabled,
                PermissionManager.hasScreenRecordingAccess(prompt: false) {
                 capture = await ocrTextReader.capture(for: gesture)
             }
-            guard let capture else { return }
+            guard isCurrentCapture(generation), let capture else { return }
+            captureTask = nil
             translate(capture)
         }
     }
@@ -114,19 +120,30 @@ final class TranslationCoordinator {
     }
 
     func cancel() {
-        captureTask?.cancel()
-        captureTask = nil
-        cancelCurrentRequest(hidePanel: true)
+        supersedeCurrentWork(hidePanel: true)
     }
 
     func clearCache() {
-        Task {
-            await cache.removeAll()
+        let previousClear = cacheClearTask
+        cacheClearTask = Task {
+            if let previousClear {
+                await previousClear.value
+            }
+            await cache.invalidate()
         }
+    }
+
+    func supersedePendingClick() {
+        supersedeCurrentWork(hidePanel: true)
     }
 
     private func performTranslation(requestID: UUID, key: TranslationCache.Key) async {
         guard isCurrent(requestID) else { return }
+        if let cacheClearTask {
+            await cacheClearTask.value
+        }
+        guard !Task.isCancelled, isCurrent(requestID) else { return }
+        let cacheEpoch = await cache.currentEpoch()
 
         if let cachedResult = await cache.value(for: key) {
             show(cachedResult, for: requestID)
@@ -146,7 +163,7 @@ final class TranslationCoordinator {
             )
             guard !Task.isCancelled, isCurrent(requestID) else { return }
 
-            await cache.insert(result, for: key)
+            await cache.insert(result, for: key, ifEpochMatches: cacheEpoch)
             show(result, for: requestID)
         } catch is CancellationError {
             return
@@ -172,6 +189,17 @@ final class TranslationCoordinator {
 
     private func isCurrent(_ requestID: UUID) -> Bool {
         activeRequest?.id == requestID
+    }
+
+    private func isCurrentCapture(_ generation: UInt64) -> Bool {
+        !Task.isCancelled && captureGeneration == generation
+    }
+
+    private func supersedeCurrentWork(hidePanel: Bool) {
+        captureGeneration &+= 1
+        captureTask?.cancel()
+        captureTask = nil
+        cancelCurrentRequest(hidePanel: hidePanel)
     }
 
     private func cancelCurrentRequest(hidePanel: Bool) {

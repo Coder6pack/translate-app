@@ -17,6 +17,7 @@ actor TranslationCache {
     private var entries: [Key: Entry] = [:]
     private var currentCost = 0
     private var accessCounter: UInt64 = 0
+    private var epoch: UInt64 = 0
 
     init(capacity: Int = 128, maximumCost: Int = 1_000_000) {
         precondition(capacity > 0)
@@ -32,7 +33,16 @@ actor TranslationCache {
         return entry.result
     }
 
-    func insert(_ result: TranslationResult, for key: Key) {
+    func currentEpoch() -> UInt64 {
+        epoch
+    }
+
+    func insert(
+        _ result: TranslationResult,
+        for key: Key,
+        ifEpochMatches expectedEpoch: UInt64
+    ) {
+        guard epoch == expectedEpoch else { return }
         let cost = key.text.utf8.count + result.translatedText.utf8.count
         guard cost <= maximumCost else { return }
 
@@ -53,7 +63,8 @@ actor TranslationCache {
         }
     }
 
-    func removeAll() {
+    func invalidate() {
+        epoch &+= 1
         entries.removeAll(keepingCapacity: false)
         currentCost = 0
         accessCounter = 0

@@ -9,6 +9,7 @@ actor AccessibilityTextReader {
     private let contextRadius = 128
 
     func capture(for gesture: MouseGesture) -> TextCapture? {
+        guard !Task.isCancelled else { return nil }
         switch gesture.kind {
         case .selection, .doubleClick:
             return selectedText(for: gesture, trigger: gesture.kind.captureTrigger)

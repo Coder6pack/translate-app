@@ -2,12 +2,21 @@ import AppKit
 
 @MainActor
 final class StatusBarController: NSObject {
+    enum RuntimeState {
+        case running
+        case paused
+        case disabled
+        case blockedPermissions
+        case startFailed
+    }
+
     private let statusItem: NSStatusItem
     private let menu = NSMenu()
     private let pauseItem = NSMenuItem()
+    private let statusLabelItem = NSMenuItem()
     private let onPauseChanged: @MainActor (Bool) -> Void
     private let onOpenSettings: @MainActor () -> Void
-    private var isPaused = false
+    private var runtimeState: RuntimeState = .startFailed
 
     init(
         onPauseChanged: @escaping @MainActor (Bool) -> Void,
@@ -28,6 +37,8 @@ final class StatusBarController: NSObject {
         pauseItem.target = self
         pauseItem.action = #selector(togglePaused)
         menu.addItem(pauseItem)
+        statusLabelItem.isEnabled = false
+        menu.addItem(statusLabelItem)
         let settingsItem = NSMenuItem(
             title: "Settings…",
             action: #selector(openSettings),
@@ -45,16 +56,11 @@ final class StatusBarController: NSObject {
         quitItem.target = self
         menu.addItem(quitItem)
         statusItem.menu = menu
+        updateRuntimeState(.startFailed)
     }
 
     @objc private func togglePaused() {
-        isPaused.toggle()
-        pauseItem.title = isPaused ? "Resume Translation" : "Pause Translation"
-        statusItem.button?.image = NSImage(
-            systemSymbolName: isPaused ? "character.bubble.fill" : "character.bubble",
-            accessibilityDescription: isPaused ? "Translation paused" : "Translate App"
-        )
-        onPauseChanged(isPaused)
+        onPauseChanged(runtimeState != .paused)
     }
 
     @objc private func quit() {
@@ -63,5 +69,43 @@ final class StatusBarController: NSObject {
 
     @objc private func openSettings() {
         onOpenSettings()
+    }
+
+    func updateRuntimeState(_ state: RuntimeState) {
+        runtimeState = state
+
+        let symbolName: String
+        let description: String
+        let statusText: String
+        switch state {
+        case .running:
+            symbolName = "character.bubble"
+            description = "Translate App running"
+            statusText = "Status: Running"
+        case .paused:
+            symbolName = "pause.circle"
+            description = "Translation paused"
+            statusText = "Status: Paused"
+        case .disabled:
+            symbolName = "character.bubble.fill"
+            description = "All translation triggers disabled"
+            statusText = "Status: All triggers disabled"
+        case .blockedPermissions:
+            symbolName = "exclamationmark.triangle"
+            description = "Translation permissions required"
+            statusText = "Status: Permissions required"
+        case .startFailed:
+            symbolName = "exclamationmark.triangle.fill"
+            description = "Translation monitor failed to start"
+            statusText = "Status: Monitor failed to start"
+        }
+
+        pauseItem.title = state == .paused ? "Resume Translation" : "Pause Translation"
+        statusLabelItem.title = statusText
+        statusItem.button?.image = NSImage(
+            systemSymbolName: symbolName,
+            accessibilityDescription: description
+        )
+        statusItem.button?.toolTip = description
     }
 }
