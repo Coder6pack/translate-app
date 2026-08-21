@@ -20,6 +20,9 @@ final class InputEventMonitor {
 
     func start() -> Bool {
         guard eventTap == nil else { return true }
+        guard CGPreflightListenEventAccess() || CGRequestListenEventAccess() else {
+            return false
+        }
 
         let mask = CGEventMask(1 << CGEventType.leftMouseDown.rawValue)
             | CGEventMask(1 << CGEventType.leftMouseUp.rawValue)
@@ -88,7 +91,11 @@ final class InputEventMonitor {
             } else {
                 kind = .singleClick
             }
-            handler(MouseGesture(kind: kind, location: location))
+            let gesture = MouseGesture(kind: kind, location: location)
+            Task { @MainActor [handler] in
+                await Task.yield()
+                handler(gesture)
+            }
 
         case .tapDisabledByTimeout, .tapDisabledByUserInput:
             if let eventTap {

@@ -5,9 +5,11 @@ final class StatusBarController: NSObject {
     private let statusItem: NSStatusItem
     private let menu = NSMenu()
     private let pauseItem = NSMenuItem()
+    private let onPauseChanged: @MainActor (Bool) -> Void
     private var isPaused = false
 
-    override init() {
+    init(onPauseChanged: @escaping @MainActor (Bool) -> Void) {
+        self.onPauseChanged = onPauseChanged
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         super.init()
 
@@ -40,6 +42,7 @@ final class StatusBarController: NSObject {
             systemSymbolName: isPaused ? "character.bubble.fill" : "character.bubble",
             accessibilityDescription: isPaused ? "Translation paused" : "Translate App"
         )
+        onPauseChanged(isPaused)
     }
 
     @objc private func quit() {
