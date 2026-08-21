@@ -19,6 +19,9 @@
 		A1000000000000000000000B /* TranslationCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000D /* TranslationCoordinator.swift */; };
 		A1000000000000000000000C /* TranslationPanelController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000E /* TranslationPanelController.swift */; };
 		A1000000000000000000000D /* PermissionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000F /* PermissionManager.swift */; };
+		A1000000000000000000000E /* SettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000100 /* SettingsStore.swift */; };
+		A1000000000000000000000F /* SettingsWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000101 /* SettingsWindowController.swift */; };
+		A10000000000000000000010 /* OCRTextReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000102 /* OCRTextReader.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -37,6 +40,9 @@
 		A2000000000000000000000D /* TranslationCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationCoordinator.swift; sourceTree = "<group>"; };
 		A2000000000000000000000E /* TranslationPanelController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationPanelController.swift; sourceTree = "<group>"; };
 		A2000000000000000000000F /* PermissionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionManager.swift; sourceTree = "<group>"; };
+		A20000000000000000000100 /* SettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStore.swift; sourceTree = "<group>"; };
+		A20000000000000000000101 /* SettingsWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsWindowController.swift; sourceTree = "<group>"; };
+		A20000000000000000000102 /* OCRTextReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRTextReader.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -73,6 +79,9 @@
 				A2000000000000000000000D /* TranslationCoordinator.swift */,
 				A2000000000000000000000E /* TranslationPanelController.swift */,
 				A2000000000000000000000F /* PermissionManager.swift */,
+				A20000000000000000000100 /* SettingsStore.swift */,
+				A20000000000000000000101 /* SettingsWindowController.swift */,
+				A20000000000000000000102 /* OCRTextReader.swift */,
 			);
 			path = Sources;
 			sourceTree = "<group>";
@@ -146,6 +155,9 @@
 				A1000000000000000000000B /* TranslationCoordinator.swift in Sources */,
 				A1000000000000000000000C /* TranslationPanelController.swift in Sources */,
 				A1000000000000000000000D /* PermissionManager.swift in Sources */,
+				A1000000000000000000000E /* SettingsStore.swift in Sources */,
+				A1000000000000000000000F /* SettingsWindowController.swift in Sources */,
+				A10000000000000000000010 /* OCRTextReader.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

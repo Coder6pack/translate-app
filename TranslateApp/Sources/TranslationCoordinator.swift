@@ -13,7 +13,8 @@ final class TranslationCoordinator {
     private let cache: TranslationCache
     private let keychainStore: KeychainStore
     private let panelController: TranslationPanelController
-    private let targetLanguage: String
+    private let settingsStore: SettingsStore
+    private let ocrTextReader: OCRTextReader
     private let captureDelay: Duration
     private let debounceDuration: Duration
     private let maximumInputBytes = 20_000
@@ -28,7 +29,8 @@ final class TranslationCoordinator {
         cache: TranslationCache = TranslationCache(),
         keychainStore: KeychainStore = KeychainStore(),
         panelController: TranslationPanelController = TranslationPanelController(),
-        targetLanguage: String = "vi",
+        settingsStore: SettingsStore,
+        ocrTextReader: OCRTextReader = OCRTextReader(),
         captureDelay: Duration = .milliseconds(80),
         debounceDuration: Duration = .milliseconds(170)
     ) {
@@ -37,12 +39,14 @@ final class TranslationCoordinator {
         self.cache = cache
         self.keychainStore = keychainStore
         self.panelController = panelController
-        self.targetLanguage = targetLanguage
+        self.settingsStore = settingsStore
+        self.ocrTextReader = ocrTextReader
         self.captureDelay = captureDelay
         self.debounceDuration = debounceDuration
     }
 
     func handle(_ gesture: MouseGesture) {
+        guard settingsStore.isEnabled(for: gesture.kind) else { return }
         captureTask?.cancel()
         cancelCurrentRequest(hidePanel: true)
 
@@ -54,7 +58,14 @@ final class TranslationCoordinator {
             }
             guard let self, !Task.isCancelled else { return }
             captureTask = nil
-            guard let capture = await textReader.capture(for: gesture) else { return }
+            var capture = await textReader.capture(for: gesture)
+            if capture == nil,
+               gesture.kind == .singleClick,
+               settingsStore.isOCREnabled,
+               PermissionManager.hasScreenRecordingAccess(prompt: false) {
+                capture = await ocrTextReader.capture(for: gesture)
+            }
+            guard let capture else { return }
             translate(capture)
         }
     }
@@ -63,12 +74,12 @@ final class TranslationCoordinator {
         let text = capture.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty,
               text.utf8.count <= maximumInputBytes,
-              !targetLanguage.isEmpty else {
+              !settingsStore.targetLanguage.isEmpty else {
             cancel()
             return
         }
 
-        let key = TranslationCache.Key(text: text, targetLanguage: targetLanguage)
+        let key = TranslationCache.Key(text: text, targetLanguage: settingsStore.targetLanguage)
         if var activeRequest, activeRequest.key == key {
             activeRequest.capture = capture
             self.activeRequest = activeRequest

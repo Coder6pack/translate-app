@@ -6,10 +6,15 @@ final class StatusBarController: NSObject {
     private let menu = NSMenu()
     private let pauseItem = NSMenuItem()
     private let onPauseChanged: @MainActor (Bool) -> Void
+    private let onOpenSettings: @MainActor () -> Void
     private var isPaused = false
 
-    init(onPauseChanged: @escaping @MainActor (Bool) -> Void) {
+    init(
+        onPauseChanged: @escaping @MainActor (Bool) -> Void,
+        onOpenSettings: @escaping @MainActor () -> Void
+    ) {
         self.onPauseChanged = onPauseChanged
+        self.onOpenSettings = onOpenSettings
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         super.init()
 
@@ -23,6 +28,13 @@ final class StatusBarController: NSObject {
         pauseItem.target = self
         pauseItem.action = #selector(togglePaused)
         menu.addItem(pauseItem)
+        let settingsItem = NSMenuItem(
+            title: "Settings…",
+            action: #selector(openSettings),
+            keyEquivalent: ","
+        )
+        settingsItem.target = self
+        menu.addItem(settingsItem)
         menu.addItem(.separator())
 
         let quitItem = NSMenuItem(
@@ -47,5 +59,9 @@ final class StatusBarController: NSObject {
 
     @objc private func quit() {
         NSApplication.shared.terminate(nil)
+    }
+
+    @objc private func openSettings() {
+        onOpenSettings()
     }
 }
