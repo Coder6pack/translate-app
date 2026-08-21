@@ -8,16 +8,21 @@ actor TranslationCache {
 
     private struct Entry {
         let result: TranslationResult
+        let cost: Int
         var lastAccess: UInt64
     }
 
     private let capacity: Int
+    private let maximumCost: Int
     private var entries: [Key: Entry] = [:]
+    private var currentCost = 0
     private var accessCounter: UInt64 = 0
 
-    init(capacity: Int = 128) {
+    init(capacity: Int = 128, maximumCost: Int = 1_000_000) {
         precondition(capacity > 0)
+        precondition(maximumCost > 0)
         self.capacity = capacity
+        self.maximumCost = maximumCost
     }
 
     func value(for key: Key) -> TranslationResult? {
@@ -28,16 +33,29 @@ actor TranslationCache {
     }
 
     func insert(_ result: TranslationResult, for key: Key) {
-        entries[key] = Entry(result: result, lastAccess: nextAccessValue())
-        guard entries.count > capacity,
-              let leastRecentlyUsed = entries.min(by: { $0.value.lastAccess < $1.value.lastAccess })?.key else {
-            return
+        let cost = key.text.utf8.count + result.translatedText.utf8.count
+        guard cost <= maximumCost else { return }
+
+        if let existing = entries[key] {
+            currentCost -= existing.cost
         }
-        entries.removeValue(forKey: leastRecentlyUsed)
+        entries[key] = Entry(result: result, cost: cost, lastAccess: nextAccessValue())
+        currentCost += cost
+
+        while entries.count > capacity || currentCost > maximumCost {
+            guard let leastRecentlyUsed = entries.min(by: {
+                $0.value.lastAccess < $1.value.lastAccess
+            })?.key,
+            let removed = entries.removeValue(forKey: leastRecentlyUsed) else {
+                break
+            }
+            currentCost -= removed.cost
+        }
     }
 
     func removeAll() {
         entries.removeAll(keepingCapacity: false)
+        currentCost = 0
         accessCounter = 0
     }
 

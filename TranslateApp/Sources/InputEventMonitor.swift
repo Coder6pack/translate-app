@@ -3,11 +3,20 @@ import CoreGraphics
 
 @MainActor
 final class InputEventMonitor {
+    private final class CallbackContext {
+        weak var monitor: InputEventMonitor?
+
+        init(monitor: InputEventMonitor) {
+            self.monitor = monitor
+        }
+    }
+
     typealias Handler = @MainActor (MouseGesture) -> Void
 
     private let handler: Handler
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
+    private var callbackContext: UnsafeMutableRawPointer?
     private var mouseDownLocation: CGPoint?
 
     init(handler: @escaping Handler) {
@@ -20,13 +29,14 @@ final class InputEventMonitor {
 
     func start() -> Bool {
         guard eventTap == nil else { return true }
-        guard CGPreflightListenEventAccess() || CGRequestListenEventAccess() else {
+        guard CGPreflightListenEventAccess() else {
             return false
         }
 
         let mask = CGEventMask(1 << CGEventType.leftMouseDown.rawValue)
             | CGEventMask(1 << CGEventType.leftMouseUp.rawValue)
-        let userInfo = Unmanaged.passUnretained(self).toOpaque()
+        let context = CallbackContext(monitor: self)
+        let userInfo = Unmanaged.passRetained(context).toOpaque()
 
         guard let tap = CGEvent.tapCreate(
             tap: .cgSessionEventTap,
@@ -36,6 +46,7 @@ final class InputEventMonitor {
             callback: Self.eventTapCallback,
             userInfo: userInfo
         ) else {
+            Unmanaged<CallbackContext>.fromOpaque(userInfo).release()
             return false
         }
 
@@ -45,6 +56,7 @@ final class InputEventMonitor {
 
         eventTap = tap
         runLoopSource = source
+        callbackContext = userInfo
         return true
     }
 
@@ -58,11 +70,16 @@ final class InputEventMonitor {
         runLoopSource = nil
         eventTap = nil
         mouseDownLocation = nil
+        if let callbackContext {
+            Unmanaged<CallbackContext>.fromOpaque(callbackContext).release()
+            self.callbackContext = nil
+        }
     }
 
     private static let eventTapCallback: CGEventTapCallBack = { _, type, event, userInfo in
         guard let userInfo else { return Unmanaged.passUnretained(event) }
-        let monitor = Unmanaged<InputEventMonitor>.fromOpaque(userInfo).takeUnretainedValue()
+        let context = Unmanaged<CallbackContext>.fromOpaque(userInfo).takeUnretainedValue()
+        guard let monitor = context.monitor else { return Unmanaged.passUnretained(event) }
         let typeValue = type.rawValue
         let location = event.location
         let clickCount = event.getIntegerValueField(.mouseEventClickState)
@@ -80,6 +97,7 @@ final class InputEventMonitor {
             mouseDownLocation = location
 
         case .leftMouseUp:
+            let startLocation = mouseDownLocation ?? location
             let dragDistance = mouseDownLocation.map { hypot(location.x - $0.x, location.y - $0.y) } ?? 0
             mouseDownLocation = nil
 
@@ -91,7 +109,7 @@ final class InputEventMonitor {
             } else {
                 kind = .singleClick
             }
-            let gesture = MouseGesture(kind: kind, location: location)
+            let gesture = MouseGesture(kind: kind, startLocation: startLocation, location: location)
             Task { @MainActor [handler] in
                 await Task.yield()
                 handler(gesture)

@@ -14,14 +14,15 @@ actor GoogleTranslationClient {
             throw TranslationError.invalidRequest
         }
 
-        var components = URLComponents(string: "https://translation.googleapis.com/language/translate/v2")
-        components?.queryItems = [URLQueryItem(name: "key", value: apiKey)]
-        guard let url = components?.url else { throw TranslationError.invalidRequest }
+        guard let url = URL(string: "https://translation.googleapis.com/language/translate/v2") else {
+            throw TranslationError.invalidRequest
+        }
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.timeoutInterval = 12
         request.setValue("application/json; charset=utf-8", forHTTPHeaderField: "Content-Type")
+        request.setValue(apiKey, forHTTPHeaderField: "X-Goog-Api-Key")
         request.httpBody = try encoder.encode(
             RequestBody(q: text, target: targetLanguage, format: "text")
         )
@@ -43,9 +44,15 @@ actor GoogleTranslationClient {
             throw TranslationError.invalidResponse
         }
         return TranslationResult(
-            translatedText: translation.translatedText,
+            translatedText: translation.translatedText.decodingXMLEntities,
             detectedSourceLanguage: translation.detectedSourceLanguage
         )
+    }
+}
+
+private extension String {
+    var decodingXMLEntities: String {
+        CFXMLCreateStringByUnescapingEntities(nil, self as CFString, nil) as String? ?? self
     }
 }
 

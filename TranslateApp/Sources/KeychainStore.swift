@@ -28,6 +28,7 @@ struct KeychainStore: Sendable {
 
     func saveAPIKey(_ newAPIKey: String) throws {
         let trimmedKey = newAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedKey.isEmpty else { throw KeychainError.emptyAPIKey }
         guard let data = trimmedKey.data(using: .utf8) else {
             throw KeychainError.encodingFailed
         }
@@ -38,17 +39,15 @@ struct KeychainStore: Sendable {
             kSecAttrAccount as String: account
         ]
 
-        let status: OSStatus
-        if apiKey() == nil {
+        var status = SecItemUpdate(
+            identity as CFDictionary,
+            [kSecValueData as String: data] as CFDictionary
+        )
+        if status == errSecItemNotFound {
             var item = identity
             item[kSecValueData as String] = data
-            item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
+            item[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
             status = SecItemAdd(item as CFDictionary, nil)
-        } else {
-            status = SecItemUpdate(
-                identity as CFDictionary,
-                [kSecValueData as String: data] as CFDictionary
-            )
         }
         guard status == errSecSuccess else { throw KeychainError.status(status) }
     }
@@ -67,11 +66,14 @@ struct KeychainStore: Sendable {
 }
 
 enum KeychainError: LocalizedError {
+    case emptyAPIKey
     case encodingFailed
     case status(OSStatus)
 
     var errorDescription: String? {
         switch self {
+        case .emptyAPIKey:
+            "The API key cannot be empty."
         case .encodingFailed:
             "The API key could not be encoded."
         case .status(let status):

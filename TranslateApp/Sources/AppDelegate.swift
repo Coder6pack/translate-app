@@ -17,12 +17,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if isPaused {
                 eventMonitor?.stop()
                 coordinator?.cancel()
-            } else if AccessibilityTextReader.isTrusted(prompt: true) {
+                coordinator?.clearCache()
+            } else if PermissionManager.hasCoreAccess(prompt: true) {
                 _ = eventMonitor?.start()
             }
         }
 
-        if AccessibilityTextReader.isTrusted(prompt: true) {
+        if PermissionManager.hasCoreAccess(prompt: true) {
             _ = eventMonitor.start()
         }
     }
@@ -30,6 +31,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         inputEventMonitor?.stop()
         translationCoordinator?.cancel()
+        translationCoordinator?.clearCache()
         statusBarController = nil
         inputEventMonitor = nil
         translationCoordinator = nil

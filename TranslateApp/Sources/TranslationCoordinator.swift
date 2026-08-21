@@ -16,6 +16,7 @@ final class TranslationCoordinator {
     private let targetLanguage: String
     private let captureDelay: Duration
     private let debounceDuration: Duration
+    private let maximumInputBytes = 20_000
 
     private var activeRequest: ActiveRequest?
     private var captureTask: Task<Void, Never>?
@@ -53,14 +54,16 @@ final class TranslationCoordinator {
             }
             guard let self, !Task.isCancelled else { return }
             captureTask = nil
-            guard let capture = textReader.capture(for: gesture) else { return }
+            guard let capture = await textReader.capture(for: gesture) else { return }
             translate(capture)
         }
     }
 
     func translate(_ capture: TextCapture) {
         let text = capture.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, !targetLanguage.isEmpty else {
+        guard !text.isEmpty,
+              text.utf8.count <= maximumInputBytes,
+              !targetLanguage.isEmpty else {
             cancel()
             return
         }
@@ -103,6 +106,12 @@ final class TranslationCoordinator {
         captureTask?.cancel()
         captureTask = nil
         cancelCurrentRequest(hidePanel: true)
+    }
+
+    func clearCache() {
+        Task {
+            await cache.removeAll()
+        }
     }
 
     private func performTranslation(requestID: UUID, key: TranslationCache.Key) async {

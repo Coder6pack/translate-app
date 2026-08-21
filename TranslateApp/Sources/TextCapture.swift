@@ -21,5 +21,15 @@ struct MouseGesture: Sendable, Equatable {
     }
 
     let kind: Kind
+    let startLocation: CGPoint
     let location: CGPoint
+
+    var dragBounds: CGRect {
+        CGRect(
+            x: min(startLocation.x, location.x),
+            y: min(startLocation.y, location.y),
+            width: abs(location.x - startLocation.x),
+            height: abs(location.y - startLocation.y)
+        )
+    }
 }

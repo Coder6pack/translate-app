@@ -1,64 +1,101 @@
 import ApplicationServices
 import CoreGraphics
 import Foundation
+import NaturalLanguage
 
-final class AccessibilityTextReader {
+actor AccessibilityTextReader {
     private let systemWideElement = AXUIElementCreateSystemWide()
-
-    static func isTrusted(prompt: Bool) -> Bool {
-        let options = ["AXTrustedCheckOptionPrompt": prompt] as CFDictionary
-        return AXIsProcessTrustedWithOptions(options)
-    }
+    private let maximumFallbackTextLength = 5_000
+    private let contextRadius = 128
 
     func capture(for gesture: MouseGesture) -> TextCapture? {
         switch gesture.kind {
         case .selection, .doubleClick:
-            return selectedText(anchor: gesture.location, trigger: gesture.kind.captureTrigger)
+            return selectedText(for: gesture, trigger: gesture.kind.captureTrigger)
         case .singleClick:
             return textAtPoint(gesture.location)
         }
     }
 
-    private func selectedText(anchor: CGPoint, trigger: TextCapture.Trigger) -> TextCapture? {
-        guard let element = focusedElement(), !isSecure(element) else { return nil }
-        guard let text = stringAttribute(kAXSelectedTextAttribute, of: element)?.trimmedForTranslation,
-              !text.isEmpty else {
+    private func selectedText(for gesture: MouseGesture, trigger: TextCapture.Trigger) -> TextCapture? {
+        guard let focusedElement = focusedElement(),
+              let pointedElement = element(at: gesture.location),
+              sameApplication(focusedElement, pointedElement),
+              !isSecure(focusedElement) else {
+            return nil
+        }
+        guard let text = stringAttribute(kAXSelectedTextAttribute, of: focusedElement)?.trimmedForTranslation,
+              !text.isEmpty,
+              text.utf8.count <= maximumFallbackTextLength else {
             return nil
         }
 
+        let selectionBounds = selectedTextBounds(of: focusedElement)
+        guard selectionMatchesGesture(selectionBounds, gesture: gesture) else { return nil }
+
         return TextCapture(
             text: text,
-            anchor: anchor,
-            bounds: selectedTextBounds(of: element),
+            anchor: gesture.location,
+            bounds: selectionBounds,
             trigger: trigger
         )
     }
 
     private func textAtPoint(_ point: CGPoint) -> TextCapture? {
+        guard let element = element(at: point),
+        !isSecure(element),
+        let index = characterIndex(at: point, in: element),
+        let context = textContext(around: index, in: element),
+        let wordRange = Self.wordRange(in: context.text, utf16Index: index - context.range.location) else {
+            return nil
+        }
+
+        let text = (context.text as NSString).substring(with: wordRange).trimmedForTranslation
+        guard !text.isEmpty else { return nil }
+        let documentWordRange = NSRange(
+            location: context.range.location + wordRange.location,
+            length: wordRange.length
+        )
+
+        return TextCapture(
+            text: text,
+            anchor: point,
+            bounds: bounds(for: documentWordRange, in: element),
+            trigger: .singleClick
+        )
+    }
+
+    private func element(at point: CGPoint) -> AXUIElement? {
         var optionalElement: AXUIElement?
         guard AXUIElementCopyElementAtPosition(
             systemWideElement,
             Float(point.x),
             Float(point.y),
             &optionalElement
-        ) == .success,
-        let element = optionalElement,
-        !isSecure(element),
-        let fullText = stringAttribute(kAXValueAttribute, of: element),
-        let index = characterIndex(at: point, in: element),
-        let wordRange = Self.wordRange(in: fullText, utf16Index: index) else {
+        ) == .success else {
             return nil
         }
+        return optionalElement
+    }
 
-        let text = (fullText as NSString).substring(with: wordRange).trimmedForTranslation
-        guard !text.isEmpty else { return nil }
+    private func sameApplication(_ first: AXUIElement, _ second: AXUIElement) -> Bool {
+        var firstPID: pid_t = 0
+        var secondPID: pid_t = 0
+        return AXUIElementGetPid(first, &firstPID) == .success
+            && AXUIElementGetPid(second, &secondPID) == .success
+            && firstPID == secondPID
+    }
 
-        return TextCapture(
-            text: text,
-            anchor: point,
-            bounds: bounds(for: wordRange, in: element),
-            trigger: .singleClick
-        )
+    private func selectionMatchesGesture(_ bounds: CGRect?, gesture: MouseGesture) -> Bool {
+        guard let bounds else { return false }
+        switch gesture.kind {
+        case .selection:
+            return bounds.intersects(gesture.dragBounds.insetBy(dx: -12, dy: -12))
+        case .doubleClick:
+            return bounds.insetBy(dx: -12, dy: -12).contains(gesture.location)
+        case .singleClick:
+            return false
+        }
     }
 
     private func focusedElement() -> AXUIElement? {
@@ -132,6 +169,49 @@ final class AccessibilityTextReader {
         return range.location
     }
 
+    private func textContext(around index: Int, in element: AXUIElement) -> (text: String, range: NSRange)? {
+        let totalLength = numberAttribute(kAXNumberOfCharactersAttribute, of: element)
+        let start = max(0, index - contextRadius)
+        let proposedEnd = index + contextRadius + 1
+        let end = totalLength.map { min($0, proposedEnd) } ?? proposedEnd
+        guard end > start else { return nil }
+
+        let range = NSRange(location: start, length: end - start)
+        if let text = string(for: range, in: element) {
+            return (text, range)
+        }
+
+        guard let fullText = stringAttribute(kAXValueAttribute, of: element),
+              fullText.utf16.count <= maximumFallbackTextLength else {
+            return nil
+        }
+        return (fullText, NSRange(location: 0, length: fullText.utf16.count))
+    }
+
+    private func numberAttribute(_ attribute: String, of element: AXUIElement) -> Int? {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success else {
+            return nil
+        }
+        return (value as? NSNumber)?.intValue
+    }
+
+    private func string(for range: NSRange, in element: AXUIElement) -> String? {
+        var mutableRange = CFRange(location: range.location, length: range.length)
+        guard let rangeValue = AXValueCreate(.cfRange, &mutableRange) else { return nil }
+
+        var value: CFTypeRef?
+        guard AXUIElementCopyParameterizedAttributeValue(
+            element,
+            kAXStringForRangeParameterizedAttribute as CFString,
+            rangeValue,
+            &value
+        ) == .success else {
+            return nil
+        }
+        return value as? String
+    }
+
     private func bounds(for range: NSRange, in element: AXUIElement) -> CGRect? {
         var mutableRange = CFRange(location: range.location, length: range.length)
         guard let rangeValue = AXValueCreate(.cfRange, &mutableRange) else { return nil }
@@ -159,27 +239,16 @@ final class AccessibilityTextReader {
     }
 
     static func wordRange(in text: String, utf16Index: Int) -> NSRange? {
-        let source = text as NSString
-        guard source.length > 0, utf16Index >= 0, utf16Index < source.length else { return nil }
+        guard utf16Index >= 0, utf16Index < text.utf16.count else { return nil }
+        let utf16View = text.utf16
+        let offset = utf16View.index(utf16View.startIndex, offsetBy: utf16Index)
+        guard let stringIndex = String.Index(offset, within: text) else { return nil }
 
-        let separators = CharacterSet.whitespacesAndNewlines
-            .union(.punctuationCharacters)
-            .union(.symbols)
-        var start = utf16Index
-        var end = utf16Index
-
-        if UnicodeScalar(source.character(at: utf16Index)).map(separators.contains) == true {
-            return nil
-        }
-        while start > 0,
-              UnicodeScalar(source.character(at: start - 1)).map(separators.contains) == false {
-            start -= 1
-        }
-        while end + 1 < source.length,
-              UnicodeScalar(source.character(at: end + 1)).map(separators.contains) == false {
-            end += 1
-        }
-        return NSRange(location: start, length: end - start + 1)
+        let tokenizer = NLTokenizer(unit: .word)
+        tokenizer.string = text
+        let range = tokenizer.tokenRange(at: stringIndex)
+        guard !range.isEmpty else { return nil }
+        return NSRange(range, in: text)
     }
 }
 
