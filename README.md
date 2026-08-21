@@ -26,9 +26,6 @@ This repository currently publishes source code, not a notarized installer.
 
 ## Download the source
 
-The repository is private, so the GitHub account downloading it must have
-access.
-
 Download the current branch as a ZIP:
 
 <https://github.com/Coder6pack/translate-app/archive/refs/heads/feat/macos-mvp.zip>
